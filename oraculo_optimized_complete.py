@@ -17,6 +17,10 @@ import streamlit as st
 import nest_asyncio
 from dotenv import load_dotenv
 
+# --- NOVA IMPORTAÇÃO PARA O SCRAPER INTEGRADO ---
+from playwright.sync_api import sync_playwright
+from fake_useragent import UserAgent
+
 from langchain_community.document_loaders import PyPDFLoader, CSVLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
@@ -111,8 +115,6 @@ class DocumentLoader:
                 docs = loader.load()
             os.remove(tmp.name)
             
-            # --- AJUSTE DE ROBUSTEZ 1/2 ---
-            # Verifica se a extração do PDF realmente retornou algum conteúdo.
             if not docs or not any(doc.page_content.strip() for doc in docs):
                 return self._handle_error("❌ A extração do PDF falhou. O arquivo pode estar corrompido, protegido por senha ou ser apenas uma imagem.")
 
@@ -196,36 +198,27 @@ class DocumentLoader:
             return self._handle_error(f"❌ Erro ao carregar TXT: {e}")
 
     def load_website(self, url: str) -> Tuple[str, bool]:
+        st.info("🤖 Robô de scraping em ação... Navegando e analisando o site. Isso pode levar um momento.")
         try:
-            st.info("🤖 Robô de scraping em ação... Navegando e analisando o site. Isso pode levar um momento.")
-            
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            scraper_path = os.path.join(current_dir, "scraper.py")
-
-            if not os.path.exists(scraper_path):
-                return self._handle_error(f"❌ Erro crítico: O arquivo 'scraper.py' não foi encontrado.")
-
-            with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt', encoding='utf-8') as tmp_file:
-                output_filename = tmp_file.name
-            
-            # --- AJUSTE DE ROBUSTEZ 2/2 ---
-            # Força a instalação dos navegadores do Playwright dentro do ambiente da nuvem.
-            with st.spinner("Preparando navegador para scraping..."):
+            # --- CORREÇÃO FINAL: LÓGICA DO SCRAPER INTEGRADA ---
+            # Garante que os navegadores do Playwright estão instalados no ambiente da nuvem.
+            with st.spinner("Preparando navegador para scraping... (Isso pode demorar na primeira vez)"):
                 subprocess.run([sys.executable, "-m", "playwright", "install"], capture_output=True, text=True)
-            
-            subprocess.run(
-                [sys.executable, scraper_path, url, output_filename],
-                capture_output=True, text=True, encoding='utf-8'
-            )
 
-            with open(output_filename, 'r', encoding='utf-8') as f:
-                content = f.read()
+            with sync_playwright() as p:
+                ua = UserAgent()
+                user_agent_string = ua.random
             
-            os.remove(output_filename)
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(user_agent=user_agent_string)
+                page = context.new_page()
+            
+                page.goto(url, timeout=90000, wait_until="domcontentloaded")
+                page.wait_for_timeout(7000) # Espera crucial para renderização de JS
 
-            if "SCRAPER_ERROR" in content:
-                return self._handle_error(f"❌ O robô de scraping falhou: {content.replace('SCRAPER_ERROR:', '')}")
-            
+                content = page.locator('body').inner_text()
+                browser.close()
+
             if not content or not content.strip():
                 return self._handle_error("❌ O robô não encontrou conteúdo de texto relevante no site.")
             
