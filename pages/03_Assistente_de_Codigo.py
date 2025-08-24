@@ -9,7 +9,6 @@ import os
 import streamlit as st
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from dotenv import load_dotenv
-from fpdf import FPDF
 import time
 
 # Importações dos modelos
@@ -63,10 +62,10 @@ MODEL_REGISTRY = {
     "Hugging Face": {
         "api_key_env": "HUGGINGFACEHUB_API_TOKEN",
         "class": HuggingFaceEndpoint,
-        "models": { "Mistral 7B Instruct": {"id": "mistralai/Mistral-7B-Instruct-v0.3"} }
+        "models": { "Qwen3 Coder 35B": {"id": "Qwen/Qwen3-Coder-480B-A35B-Instruct"} }
     },
     "Groq": {
-        "api_key_env": "GROQ_API_TOKEN",
+        "api_key_env": "GROQ_API_KEY",
         "class": ChatGroq,
         "models": { "Llama3 70B (Groq)": {"id": "llama3-70b-8192"} }
     },
@@ -89,43 +88,6 @@ def get_file_content(uploaded_file):
     except Exception as e:
         st.error(f"Erro ao ler o arquivo: {e}")
         return ""
-
-def generate_pdf(chat_history):
-    """Gera um PDF a partir do histórico do chat."""
-    pdf = FPDF()
-    pdf.add_page()
-    
-    font_name = 'DejaVu'
-    try:
-        font_path = os.path.join(os.path.dirname(__file__), '..', 'fonts', 'DejaVuSans.ttf')
-        if not os.path.exists(font_path):
-             font_path = 'fonts/DejaVuSans.ttf'
-        pdf.add_font(font_name, '', font_path, uni=True)
-    except RuntimeError:
-        font_name = 'Arial'
-        st.warning("Fonte DejaVuSans não encontrada. PDF pode não renderizar todos os caracteres.")
-
-    pdf.set_font(font_name, '', 12)
-    pdf.set_fill_color(240, 240, 240)
-    pdf.cell(0, 10, "Histórico do Chat - Oráculo Coder", 1, 1, 'C', 1)
-    pdf.ln(10)
-
-    for msg in chat_history:
-        if isinstance(msg, SystemMessage): continue
-
-        role = "Usuário" if isinstance(msg, HumanMessage) else "Assistente"
-        pdf.set_font(font_name, '', 14)
-        pdf.multi_cell(0, 10, f'--- {role} ---')
-        
-        pdf.set_font(font_name, '', 10)
-        # --- CORREÇÃO DO ERRO DE LARGURA ---
-        # A função multi_cell com a fonte unicode (DejaVu) e a codificação correta
-        # consegue quebrar as linhas longas de código automaticamente.
-        pdf.multi_cell(0, 5, msg.content)
-        pdf.ln(5)
-        
-    # Retorna os bytes do PDF diretamente.
-    return pdf.output(dest='S')
 
 # ============================================================================
 # CLASSE DA APLICAÇÃO
@@ -219,19 +181,6 @@ class AssistenteCodigoApp:
                     mime="text/markdown",
                     use_container_width=True
                 )
-
-                try:
-                    pdf_data = generate_pdf(st.session_state.chat_history_coder)
-                    st.download_button(
-                        label="Baixar como PDF (.pdf)",
-                        data=pdf_data,
-                        file_name=f"chat_coder_{int(time.time())}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
-                except Exception as e:
-                    st.error(f"Erro ao gerar PDF: {e}")
-
 
     def _render_main_interface(self):
         """Renderiza a interface principal."""
