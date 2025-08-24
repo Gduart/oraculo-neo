@@ -47,8 +47,8 @@ MODEL_REGISTRY = {
         "api_key_env": "ANTHROPIC_API_KEY",
         "class": ChatAnthropic,
         "models": {
-            "Claude 3 Opus": {"id": "claude-3-opus-20240229"},
-            "Claude 3 Sonnet": {"id": "claude-3-sonnet-20240229"},
+            "Claude 3.7 Soneto": {"id": "claude-3-7-sonnet-latest"},
+            "Claude Haiku 3.5": {"id": "claude-3-5-haiku-latest"},
         }
     },
     "OpenAI": {
