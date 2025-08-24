@@ -33,15 +33,24 @@ from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from langchain_deepseek import ChatDeepSeek
 from langchain_community.chat_models import ChatZhipuAI
+from langchain_anthropic import ChatAnthropic # <-- Adicionado para consistência
 from langchain_community.vectorstores import FAISS
 
 nest_asyncio.apply()
 load_dotenv()
 
 # ============================================================================
-# CONFIGURAÇÃO CENTRAL DE MODELOS (SUA VERSÃO COMPLETA)
+# CONFIGURAÇÃO CENTRAL DE MODELOS (SUA VERSÃO COMPLETA E CONSISTENTE)
 # ============================================================================
 MODEL_REGISTRY = {
+    "Anthropic": {
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "class": ChatAnthropic,
+        "models": {
+            "Claude 3 Opus": {"id": "claude-3-opus-20240229"},
+            "Claude 3 Sonnet": {"id": "claude-3-sonnet-20240229"},
+        }
+    },
     "OpenAI": {
         "api_key_env": "OPENAI_API_KEY",
         "class": ChatOpenAI,
@@ -152,8 +161,20 @@ class DocumentLoader:
                 'quiet': True,
             }
 
-            with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
-                ydl.download([url])
+            # --- CORREÇÃO CIRÚRGICA PARA ERRO 429 ---
+            # Tenta baixar a legenda até 3 vezes, com um tempo de espera, para evitar o erro "Too Many Requests".
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
+                        ydl.download([url])
+                    break # Se o download for bem-sucedido, sai do loop
+                except yt_dlp.utils.DownloadError as e:
+                    if "HTTP Error 429" in str(e) and attempt < max_retries - 1:
+                        st.warning(f"Muitas requisições para o YouTube. Tentando novamente em 5 segundos... (Tentativa {attempt + 1}/{max_retries})")
+                        time.sleep(5)
+                    else:
+                        raise e # Se não for o erro 429 ou for a última tentativa, levanta o erro original
 
             subtitle_file = f"{video_id}.{lang_to_download}.vtt"
             if not os.path.exists(subtitle_file):
@@ -200,8 +221,6 @@ class DocumentLoader:
     def load_website(self, url: str) -> Tuple[str, bool]:
         st.info("🤖 Robô de scraping em ação... Navegando e analisando o site. Isso pode levar um momento.")
         try:
-            # --- CORREÇÃO FINAL: LÓGICA DO SCRAPER INTEGRADA ---
-            # Garante que os navegadores do Playwright estão instalados no ambiente da nuvem.
             with st.spinner("Preparando navegador para scraping... (Isso pode demorar na primeira vez)"):
                 subprocess.run([sys.executable, "-m", "playwright", "install"], capture_output=True, text=True)
 
@@ -214,7 +233,7 @@ class DocumentLoader:
                 page = context.new_page()
             
                 page.goto(url, timeout=90000, wait_until="domcontentloaded")
-                page.wait_for_timeout(7000) # Espera crucial para renderização de JS
+                page.wait_for_timeout(7000)
 
                 content = page.locator('body').inner_text()
                 browser.close()
@@ -301,6 +320,7 @@ class OraculoApp:
                 ChatGroq: {"groq_api_key": api_key, "model_name": model_id},
                 ChatDeepSeek: {"api_key": api_key, "model_name": model_id},
                 ChatZhipuAI: {"zhipuai_api_key": api_key, "model_name": model_id},
+                ChatAnthropic: {"anthropic_api_key": api_key, "model_name": model_id}
             }
             params = init_params.get(ModelClass, {})
             return ModelClass(**params)
