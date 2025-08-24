@@ -95,20 +95,17 @@ def generate_pdf(chat_history):
     pdf = FPDF()
     pdf.add_page()
     
-    # --- CORREÇÃO DO ERRO DA FONTE ---
-    # Tenta encontrar a fonte no caminho padrão do Streamlit Cloud
+    font_name = 'DejaVu'
     try:
         font_path = os.path.join(os.path.dirname(__file__), '..', 'fonts', 'DejaVuSans.ttf')
         if not os.path.exists(font_path):
-             # Fallback para um caminho alternativo se a estrutura for diferente
              font_path = 'fonts/DejaVuSans.ttf'
-        pdf.add_font('DejaVu', '', font_path, uni=True)
-        pdf.set_font('DejaVu', '', 12)
+        pdf.add_font(font_name, '', font_path, uni=True)
     except RuntimeError:
-        # Se a fonte não for encontrada, usa uma fonte padrão e avisa o usuário
-        pdf.set_font('Arial', '', 12)
-        st.warning("Fonte DejaVuSans não encontrada. O PDF será gerado com uma fonte padrão e pode não exibir todos os caracteres corretamente.")
+        font_name = 'Arial'
+        st.warning("Fonte DejaVuSans não encontrada. PDF pode não renderizar todos os caracteres.")
 
+    pdf.set_font(font_name, '', 12)
     pdf.set_fill_color(240, 240, 240)
     pdf.cell(0, 10, "Histórico do Chat - Oráculo Coder", 1, 1, 'C', 1)
     pdf.ln(10)
@@ -117,16 +114,18 @@ def generate_pdf(chat_history):
         if isinstance(msg, SystemMessage): continue
 
         role = "Usuário" if isinstance(msg, HumanMessage) else "Assistente"
-        pdf.set_font_size(14)
+        pdf.set_font(font_name, '', 14)
         pdf.multi_cell(0, 10, f'--- {role} ---')
         
-        pdf.set_font_size(12)
-        # Trata o texto para evitar problemas de codificação no PDF
-        text = msg.content.encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(0, 10, text)
+        pdf.set_font(font_name, '', 10)
+        # --- CORREÇÃO DO ERRO DE LARGURA ---
+        # A função multi_cell com a fonte unicode (DejaVu) e a codificação correta
+        # consegue quebrar as linhas longas de código automaticamente.
+        pdf.multi_cell(0, 5, msg.content)
         pdf.ln(5)
         
-    return pdf.output(dest='S').encode('latin-1')
+    # Retorna os bytes do PDF diretamente.
+    return pdf.output(dest='S')
 
 # ============================================================================
 # CLASSE DA APLICAÇÃO
@@ -193,7 +192,6 @@ class AssistenteCodigoApp:
 
                 st.markdown("### 📥 Download do Chat")
                 
-                # --- NOVOS BOTÕES DE DOWNLOAD ---
                 txt_history = ""
                 for msg in st.session_state.chat_history_coder:
                     if isinstance(msg, SystemMessage): continue
