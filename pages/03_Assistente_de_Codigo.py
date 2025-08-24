@@ -10,6 +10,7 @@ import streamlit as st
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from dotenv import load_dotenv
 from fpdf import FPDF
+import time
 
 # Importações dos modelos
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -93,10 +94,21 @@ def generate_pdf(chat_history):
     """Gera um PDF a partir do histórico do chat."""
     pdf = FPDF()
     pdf.add_page()
-    # Adiciona uma fonte que suporte UTF-8
-    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-    pdf.set_font('DejaVu', '', 12)
     
+    # --- CORREÇÃO DO ERRO DA FONTE ---
+    # Tenta encontrar a fonte no caminho padrão do Streamlit Cloud
+    try:
+        font_path = os.path.join(os.path.dirname(__file__), '..', 'fonts', 'DejaVuSans.ttf')
+        if not os.path.exists(font_path):
+             # Fallback para um caminho alternativo se a estrutura for diferente
+             font_path = 'fonts/DejaVuSans.ttf'
+        pdf.add_font('DejaVu', '', font_path, uni=True)
+        pdf.set_font('DejaVu', '', 12)
+    except RuntimeError:
+        # Se a fonte não for encontrada, usa uma fonte padrão e avisa o usuário
+        pdf.set_font('Arial', '', 12)
+        st.warning("Fonte DejaVuSans não encontrada. O PDF será gerado com uma fonte padrão e pode não exibir todos os caracteres corretamente.")
+
     pdf.set_fill_color(240, 240, 240)
     pdf.cell(0, 10, "Histórico do Chat - Oráculo Coder", 1, 1, 'C', 1)
     pdf.ln(10)
@@ -105,16 +117,16 @@ def generate_pdf(chat_history):
         if isinstance(msg, SystemMessage): continue
 
         role = "Usuário" if isinstance(msg, HumanMessage) else "Assistente"
-        pdf.set_font('DejaVu', '', 12) # Usa a fonte com suporte a bold (se adicionada)
+        pdf.set_font_size(14)
         pdf.multi_cell(0, 10, f'--- {role} ---')
         
-        pdf.set_font('DejaVu', '', 12)
-        pdf.multi_cell(0, 10, msg.content)
+        pdf.set_font_size(12)
+        # Trata o texto para evitar problemas de codificação no PDF
+        text = msg.content.encode('latin-1', 'replace').decode('latin-1')
+        pdf.multi_cell(0, 10, text)
         pdf.ln(5)
         
-    # --- CORREÇÃO DO ERRO ---
-    # Retorna os bytes do PDF diretamente, sem tentar codificar para latin-1
-    return pdf.output(dest='S').encode('latin-1', 'replace')
+    return pdf.output(dest='S').encode('latin-1')
 
 # ============================================================================
 # CLASSE DA APLICAÇÃO
@@ -179,14 +191,49 @@ class AssistenteCodigoApp:
                     st.session_state.chat_history_coder = []
                     st.rerun()
 
-                pdf_data = generate_pdf(st.session_state.chat_history_coder)
+                st.markdown("### 📥 Download do Chat")
+                
+                # --- NOVOS BOTÕES DE DOWNLOAD ---
+                txt_history = ""
+                for msg in st.session_state.chat_history_coder:
+                    if isinstance(msg, SystemMessage): continue
+                    role = "Usuário" if isinstance(msg, HumanMessage) else "Assistente"
+                    txt_history += f"--- {role} ---\n{msg.content}\n\n"
+                
                 st.download_button(
-                    label="📄 Download do Chat (PDF)",
-                    data=pdf_data,
-                    file_name="chat_oraculo_coder.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
+                    label="Baixar como Texto (.txt)",
+                    data=txt_history.encode('utf-8'),
+                    file_name=f"chat_coder_{int(time.time())}.txt",
+                    mime="text/plain",
+                    use_container_width=True
                 )
+
+                md_history = ""
+                for msg in st.session_state.chat_history_coder:
+                    if isinstance(msg, SystemMessage): continue
+                    role = "**Usuário**" if isinstance(msg, HumanMessage) else "**Assistente**"
+                    md_history += f"### {role}\n{msg.content}\n\n---\n\n"
+
+                st.download_button(
+                    label="Baixar como Markdown (.md)",
+                    data=md_history.encode('utf-8'),
+                    file_name=f"chat_coder_{int(time.time())}.md",
+                    mime="text/markdown",
+                    use_container_width=True
+                )
+
+                try:
+                    pdf_data = generate_pdf(st.session_state.chat_history_coder)
+                    st.download_button(
+                        label="Baixar como PDF (.pdf)",
+                        data=pdf_data,
+                        file_name=f"chat_coder_{int(time.time())}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+                except Exception as e:
+                    st.error(f"Erro ao gerar PDF: {e}")
+
 
     def _render_main_interface(self):
         """Renderiza a interface principal."""
