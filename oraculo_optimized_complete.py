@@ -110,7 +110,12 @@ class DocumentLoader:
                 loader = PyPDFLoader(tmp.name)
                 docs = loader.load()
             os.remove(tmp.name)
-            if not docs: return self._handle_error("❌ PDF vazio ou ilegível.")
+            
+            # --- AJUSTE DE ROBUSTEZ 1/2 ---
+            # Verifica se a extração do PDF realmente retornou algum conteúdo.
+            if not docs or not any(doc.page_content.strip() for doc in docs):
+                return self._handle_error("❌ A extração do PDF falhou. O arquivo pode estar corrompido, protegido por senha ou ser apenas uma imagem.")
+
             content = "\n\n".join(doc.page_content for doc in docs)
             return content, True
         except Exception as e:
@@ -194,8 +199,6 @@ class DocumentLoader:
         try:
             st.info("🤖 Robô de scraping em ação... Navegando e analisando o site. Isso pode levar um momento.")
             
-            # --- CORREÇÃO DE DEPLOY (1/2) ---
-            # Constrói o caminho absoluto para o scraper.py para funcionar na nuvem
             current_dir = os.path.dirname(os.path.abspath(__file__))
             scraper_path = os.path.join(current_dir, "scraper.py")
 
@@ -205,8 +208,10 @@ class DocumentLoader:
             with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt', encoding='utf-8') as tmp_file:
                 output_filename = tmp_file.name
             
-            # Garante que os navegadores do playwright estão instalados no ambiente da nuvem
-            subprocess.run([sys.executable, "-m", "playwright", "install"], capture_output=True, text=True)
+            # --- AJUSTE DE ROBUSTEZ 2/2 ---
+            # Força a instalação dos navegadores do Playwright dentro do ambiente da nuvem.
+            with st.spinner("Preparando navegador para scraping..."):
+                subprocess.run([sys.executable, "-m", "playwright", "install"], capture_output=True, text=True)
             
             subprocess.run(
                 [sys.executable, scraper_path, url, output_filename],
@@ -245,8 +250,6 @@ class RAGProcessor:
     def create_rag_system(self, doc_content: str) -> Any:
         if not self._initialize_embeddings(): return None
         try:
-            # --- CORREÇÃO DE DEPLOY (2/2) ---
-            # Adiciona uma verificação para evitar erro com conteúdo vazio ou muito curto
             if not doc_content or len(doc_content) < 10:
                  st.error("❌ O conteúdo extraído do documento está vazio ou é muito curto para ser analisado.")
                  return None
