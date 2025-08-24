@@ -26,8 +26,6 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
-# --- CORREÇÃO DEFINITIVA ---
-# Importamos as duas classes necessárias para o Hugging Face
 from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from langchain_deepseek import ChatDeepSeek
 from langchain_community.chat_models import ChatZhipuAI
@@ -37,7 +35,7 @@ nest_asyncio.apply()
 load_dotenv()
 
 # ============================================================================
-# CONFIGURAÇÃO CENTRAL DE MODELOS
+# CONFIGURAÇÃO CENTRAL DE MODELOS (SUA VERSÃO COMPLETA)
 # ============================================================================
 MODEL_REGISTRY = {
     "OpenAI": {
@@ -63,7 +61,7 @@ MODEL_REGISTRY = {
     },
     "Hugging Face": {
         "api_key_env": "HUGGINGFACEHUB_API_TOKEN",
-        "class": HuggingFaceEndpoint, # Mantemos a classe base para identificação
+        "class": HuggingFaceEndpoint,
         "models": {
             "Mistral 7B Instruct": {"id": "mistralai/Mistral-7B-Instruct-v0.3"},
             "Zephyr 7B": {"id": "HuggingFaceH4/zephyr-7b-beta"},
@@ -97,10 +95,10 @@ MODEL_REGISTRY = {
     }
 }
 
-# ... (O restante das classes DocumentLoader e RAGProcessor permanecem idênticas) ...
+# ============================================================================
+# MÓDULO DE LOADERS DE DOCUMENTOS
+# ============================================================================
 class DocumentLoader:
-    """Classe robusta para carregar conteúdo de diversas fontes."""
-
     def _handle_error(self, msg: str) -> Tuple[str, bool]:
         st.error(msg)
         return "", False
@@ -112,7 +110,7 @@ class DocumentLoader:
                 loader = PyPDFLoader(tmp.name)
                 docs = loader.load()
             os.remove(tmp.name)
-            if not docs: return self._handle_error( "❌ PDF vazio ou ilegível." )
+            if not docs: return self._handle_error("❌ PDF vazio ou ilegível.")
             content = "\n\n".join(doc.page_content for doc in docs)
             return content, True
         except Exception as e:
@@ -129,13 +127,13 @@ class DocumentLoader:
                 available_auto_subs = info.get('automatic_captions', {})
 
             if not available_subs and not available_auto_subs:
-                return self._handle_error( "❌ Nenhuma legenda (manual ou automática) encontrada para este vídeo." )
+                return self._handle_error("❌ Nenhuma legenda (manual ou automática) encontrada para este vídeo.")
 
             lang_to_download = next((lang for lang in ['pt', 'en'] if lang in available_subs), None) or \
                                next((lang for lang in ['pt', 'en'] if lang in available_auto_subs), None)
-           
+            
             if not lang_to_download:
-                return self._handle_error( "❌ Nenhuma legenda em Português ou Inglês foi encontrada." )
+                return self._handle_error("❌ Nenhuma legenda em Português ou Inglês foi encontrada.")
 
             st.info(f"📹 Etapa 2: Baixando legenda selecionada ('{lang_to_download}')...")
             ydl_opts_download = {
@@ -163,11 +161,11 @@ class DocumentLoader:
             content = " ".join(text_lines)
 
             if not content.strip():
-                return self._handle_error( "❌ Transcrição encontrada, mas a extração do texto falhou." )
-           
-            st.success( "✅ Transcrição do YouTube obtida com sucesso!" )
+                return self._handle_error("❌ Transcrição encontrada, mas a extração do texto falhou.")
+            
+            st.success("✅ Transcrição do YouTube obtida com sucesso!")
             return content, True
-       
+        
         except Exception as e:
             return self._handle_error(f"❌ Falha crítica ao processar transcrição do YouTube. Erro: {e}")
 
@@ -178,16 +176,16 @@ class DocumentLoader:
                 loader = CSVLoader(tmp.name)
                 docs = loader.load()
             os.remove(tmp.name)
-            if not docs: return self._handle_error( "❌ CSV vazio ou ilegível." )
+            if not docs: return self._handle_error("❌ CSV vazio ou ilegível.")
             content = "\n\n".join(doc.page_content for doc in docs)
             return content, True
         except Exception as e:
             return self._handle_error(f"❌ Erro ao carregar CSV: {e}")
-           
+            
     def load_txt(self, file_upload: Any) -> Tuple[str, bool]:
         try:
             content = file_upload.getvalue().decode("utf-8")
-            if not content.strip(): return self._handle_error( "❌ Arquivo TXT está vazio." )
+            if not content.strip(): return self._handle_error("❌ Arquivo TXT está vazio.")
             return content, True
         except Exception as e:
             return self._handle_error(f"❌ Erro ao carregar TXT: {e}")
@@ -195,14 +193,21 @@ class DocumentLoader:
     def load_website(self, url: str) -> Tuple[str, bool]:
         try:
             st.info("🤖 Robô de scraping em ação... Navegando e analisando o site. Isso pode levar um momento.")
-           
-            scraper_path = "scraper.py"
+            
+            # --- CORREÇÃO DE DEPLOY (1/2) ---
+            # Constrói o caminho absoluto para o scraper.py para funcionar na nuvem
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            scraper_path = os.path.join(current_dir, "scraper.py")
+
             if not os.path.exists(scraper_path):
-                return self._handle_error(f"❌ Erro crítico: O arquivo '{scraper_path}' não foi encontrado.")
+                return self._handle_error(f"❌ Erro crítico: O arquivo 'scraper.py' não foi encontrado.")
 
             with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.txt', encoding='utf-8') as tmp_file:
                 output_filename = tmp_file.name
-           
+            
+            # Garante que os navegadores do playwright estão instalados no ambiente da nuvem
+            subprocess.run([sys.executable, "-m", "playwright", "install"], capture_output=True, text=True)
+            
             subprocess.run(
                 [sys.executable, scraper_path, url, output_filename],
                 capture_output=True, text=True, encoding='utf-8'
@@ -210,30 +215,29 @@ class DocumentLoader:
 
             with open(output_filename, 'r', encoding='utf-8') as f:
                 content = f.read()
-           
+            
             os.remove(output_filename)
 
             if "SCRAPER_ERROR" in content:
                 return self._handle_error(f"❌ O robô de scraping falhou: {content.replace('SCRAPER_ERROR:', '')}")
-           
+            
             if not content or not content.strip():
-                return self._handle_error( "❌ O robô não encontrou conteúdo de texto relevante no site." )
-           
-            st.success( "✅ Conteúdo do site extraído com sucesso pelo robô!" )
+                return self._handle_error("❌ O robô não encontrou conteúdo de texto relevante no site.")
+            
+            st.success("✅ Conteúdo do site extraído com sucesso pelo robô!")
             return content, True
-           
+            
         except Exception as e:
             return self._handle_error(f"❌ Falha crítica ao processar o site. Erro: {e}")
 
 class RAGProcessor:
-    """Gerencia a criação do sistema RAG (Embeddings, Vectorstore, Retriever)."""
     def __init__(self):
         self.embedding_model = None
 
     def _initialize_embeddings(self) -> bool:
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
-            st.error( "❌ Chave GOOGLE_API_KEY não encontrada para os embeddings." )
+            st.error("❌ Chave GOOGLE_API_KEY não encontrada para os embeddings.")
             return False
         self.embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
         return True
@@ -241,12 +245,18 @@ class RAGProcessor:
     def create_rag_system(self, doc_content: str) -> Any:
         if not self._initialize_embeddings(): return None
         try:
+            # --- CORREÇÃO DE DEPLOY (2/2) ---
+            # Adiciona uma verificação para evitar erro com conteúdo vazio ou muito curto
+            if not doc_content or len(doc_content) < 10:
+                 st.error("❌ O conteúdo extraído do documento está vazio ou é muito curto para ser analisado.")
+                 return None
+
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=200)
             chunks = text_splitter.split_text(doc_content)
             if not chunks:
-                st.error( "❌ Falha ao dividir o documento. O conteúdo pode ser muito curto." )
+                st.error("❌ Falha ao dividir o documento. O conteúdo pode ser muito curto.")
                 return None
-           
+            
             vectorstore = FAISS.from_texts(texts=chunks, embedding=self.embedding_model)
             return vectorstore.as_retriever(search_kwargs={"k": 7})
         except Exception as e:
@@ -270,18 +280,16 @@ class OraculoApp:
         if not provider_info:
             st.error(f"Provedor '{provider}' não encontrado no registro.")
             return None
-       
+        
         api_key = os.getenv(provider_info["api_key_env"])
         if not api_key:
             st.error(f"❌ Chave de API '{provider_info['api_key_env']}' não encontrada no ambiente.")
             return None
-       
+        
         try:
             ModelClass = provider_info["class"]
             model_id = provider_info["models"][model_name]["id"]
 
-            # --- CORREÇÃO DEFINITIVA ---
-            # Lógica especial para o Hugging Face para garantir que ele funcione como um ChatModel
             if provider == "Hugging Face":
                 llm = HuggingFaceEndpoint(
                     huggingfacehub_api_token=api_key,
@@ -291,7 +299,6 @@ class OraculoApp:
                 )
                 return ChatHuggingFace(llm=llm)
             
-            # Lógica padrão para todos os outros provedores
             init_params = {
                 ChatOpenAI: {"openai_api_key": api_key, "model_name": model_id},
                 ChatGoogleGenerativeAI: {"google_api_key": api_key, "model": model_id},
@@ -309,7 +316,7 @@ class OraculoApp:
     def _run_initialization_process(self, source_type, source_data, provider, model_name):
         st.session_state.system_ready = False
         st.session_state.chat_history = []
-       
+        
         try:
             with st.status("Oráculo está se preparando...", expanded=True) as status:
                 status.update(label="**Etapa 1/3:** Carregando e processando documento...")
@@ -318,7 +325,7 @@ class OraculoApp:
                     status.update(label="Falha na Etapa 1", state="error", expanded=True)
                     st.error(f"Tipo de fonte '{source_type}' não implementado.")
                     return
-               
+                
                 doc_content, success = load_func(source_data)
                 if not success:
                     status.update(label="Falha no Carregamento do Documento", state="error", expanded=True)
@@ -353,9 +360,9 @@ class OraculoApp:
     def _render_sidebar(self):
         with st.sidebar:
             st.markdown("# 🛠️ Configurações do Oráculo")
-           
+            
             source_type = st.selectbox("Tipo de fonte", ['PDF', 'Youtube', 'CSV', 'TXT', 'Website'])
-           
+            
             source_data = None
             if source_type in ['Youtube', 'Website']:
                 source_data = st.text_input(f"URL do {source_type}", placeholder="https://...")
@@ -369,7 +376,7 @@ class OraculoApp:
 
             if st.button("🚀 Inicializar Oráculo", type="primary", use_container_width=True, disabled=not source_data):
                 self._run_initialization_process(source_type, source_data, provider, model_name)
-           
+            
             if st.session_state.get('system_ready') and st.session_state.get('chat_history'):
                 st.divider()
                 st.markdown("### 📥 Download da Análise")
@@ -378,7 +385,7 @@ class OraculoApp:
                 for msg in st.session_state.chat_history:
                     role = "Usuário" if isinstance(msg, HumanMessage) else "Oráculo"
                     txt_history += f"--- {role} ---\n{msg.content}\n\n"
-               
+                
                 st.download_button(
                     label="Baixar como Texto (.txt)",
                     data=txt_history.encode('utf-8'),
@@ -400,11 +407,9 @@ class OraculoApp:
                     use_container_width=True
                 )
 
-
     def _render_chat_interface(self):
         st.title("🔮 Oráculo - Análise de Documentos")
         st.caption("Faça upload de um documento e extraia insights com IA.")
-
 
         if not st.session_state.get('system_ready'):
             st.info("👈 Configure e inicialize o Oráculo na barra lateral para começar.")
@@ -414,7 +419,7 @@ class OraculoApp:
             role = "user" if isinstance(msg, HumanMessage) else "assistant"
             with st.chat_message(role):
                 st.markdown(msg.content)
-       
+        
         if prompt := st.chat_input("Faça sua pergunta sobre o documento..."):
             st.session_state.chat_history.append(HumanMessage(content=prompt))
             with st.chat_message("user"):
@@ -434,22 +439,22 @@ class OraculoApp:
                 history_aware_retriever = create_history_aware_retriever(
                     st.session_state.chat_model, st.session_state.retriever, contextualize_q_prompt
                 )
-               
+                
                 qa_prompt = ChatPromptTemplate.from_messages([
                     ("system", "Você é o Oráculo. Responda à pergunta do usuário em Português do Brasil com base no seguinte contexto:\n\n{context}"),
                     ("placeholder", "{chat_history}"),
                     ("human", "{input}"),
                 ])
                 question_answer_chain = create_stuff_documents_chain(st.session_state.chat_model, qa_prompt)
-               
+                
                 rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-               
+                
                 response = rag_chain.invoke({
                     "input": query,
                     "chat_history": st.session_state.chat_history
                 })
                 answer = response.get('answer', "Desculpe, não encontrei uma resposta.")
-               
+                
                 st.markdown(answer)
                 st.session_state.chat_history.append(AIMessage(content=answer))
 
