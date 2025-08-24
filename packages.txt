@@ -8,3 +8,4 @@ libgtk-3-0
 libgbm-dev
 libgl1-mesa-glx
 poppler-utils
+libasound2
