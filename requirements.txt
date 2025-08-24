@@ -18,3 +18,5 @@ pandas
 opencv-python-headless
 unstructured
 PyJWT
+langchain-anthropic
+fpdf2
