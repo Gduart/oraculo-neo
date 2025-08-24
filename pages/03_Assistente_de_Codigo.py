@@ -18,7 +18,7 @@ from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from langchain_deepseek import ChatDeepSeek
 from langchain_community.chat_models import ChatZhipuAI
-from langchain_anthropic import ChatAnthropic # <-- NOVO MODELO
+from langchain_anthropic import ChatAnthropic
 
 load_dotenv()
 
@@ -93,26 +93,28 @@ def generate_pdf(chat_history):
     """Gera um PDF a partir do histórico do chat."""
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
+    # Adiciona uma fonte que suporte UTF-8
+    pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
+    pdf.set_font('DejaVu', '', 12)
     
     pdf.set_fill_color(240, 240, 240)
     pdf.cell(0, 10, "Histórico do Chat - Oráculo Coder", 1, 1, 'C', 1)
     pdf.ln(10)
 
     for msg in chat_history:
-        if isinstance(msg, SystemMessage): continue # Ignora a mensagem de sistema
+        if isinstance(msg, SystemMessage): continue
 
         role = "Usuário" if isinstance(msg, HumanMessage) else "Assistente"
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, f'--- {role} ---', 0, 1)
-        pdf.set_font("Arial", '', 12)
+        pdf.set_font('DejaVu', '', 12) # Usa a fonte com suporte a bold (se adicionada)
+        pdf.multi_cell(0, 10, f'--- {role} ---')
         
-        # Trata o texto para evitar problemas de codificação no PDF
-        text = msg.content.encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(0, 10, text)
+        pdf.set_font('DejaVu', '', 12)
+        pdf.multi_cell(0, 10, msg.content)
         pdf.ln(5)
         
-    return pdf.output(dest='S').encode('latin-1')
+    # --- CORREÇÃO DO ERRO ---
+    # Retorna os bytes do PDF diretamente, sem tentar codificar para latin-1
+    return pdf.output(dest='S').encode('latin-1', 'replace')
 
 # ============================================================================
 # CLASSE DA APLICAÇÃO
@@ -129,7 +131,6 @@ class AssistenteCodigoApp:
 
     def _initialize_chat_model(self, provider: str, model_name: str):
         """Inicializa o modelo de chat selecionado."""
-        # Lógica de inicialização (similar às outras páginas)
         provider_info = MODEL_REGISTRY.get(provider)
         api_key = os.getenv(provider_info["api_key_env"])
         if not api_key:
@@ -196,7 +197,6 @@ class AssistenteCodigoApp:
             st.info("👈 Selecione um modelo e inicie o assistente na barra lateral para começar.")
             return
         
-        # Área de Contexto
         with st.expander("➕ Adicionar Contexto de Código (Opcional)"):
             uploaded_file = st.file_uploader(
                 "Envie um arquivo (.py, .pdf, .md, .txt)",
@@ -205,7 +205,6 @@ class AssistenteCodigoApp:
             st.markdown("<p style='text-align: center; color: grey;'>OU</p>", unsafe_allow_html=True)
             pasted_code = st.text_area("Cole seu código aqui", height=300)
 
-        # Interface de Chat
         for msg in st.session_state.chat_history_coder:
             if not isinstance(msg, SystemMessage):
                 role = "user" if isinstance(msg, HumanMessage) else "assistant"
@@ -218,16 +217,14 @@ class AssistenteCodigoApp:
 
     def _process_user_query(self, query: str, context: str):
         """Processa a consulta do usuário."""
-        # Adiciona o prompt de sistema se for a primeira mensagem
         if not st.session_state.chat_history_coder:
             st.session_state.chat_history_coder.append(SystemMessage(content=SYSTEM_PROMPT))
         
-        # Monta a pergunta completa
         full_prompt = query
         if context:
             full_prompt = f"Com base no código abaixo, responda à seguinte pergunta.\n\n**Pergunta:** {query}\n\n--- CÓDIGO ---\n```python\n{context}\n```"
         
-        st.session_state.chat_history_coder.append(HumanMessage(content=query)) # Mostra só a pergunta no chat
+        st.session_state.chat_history_coder.append(HumanMessage(content=query))
         
         with st.chat_message("user"):
             st.markdown(query)
@@ -235,7 +232,6 @@ class AssistenteCodigoApp:
         with st.chat_message("assistant"):
             with st.spinner("Analisando..."):
                 try:
-                    # Modifica a mensagem do usuário na chamada para incluir o contexto
                     messages_for_api = st.session_state.chat_history_coder.copy()
                     messages_for_api[-1] = HumanMessage(content=full_prompt)
 
