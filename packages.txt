@@ -1,13 +1,8 @@
-# Para Tesseract (OCR usado por unstructured)
 tesseract-ocr
-
-# Para Playwright (Web Scraping)
 libnss3
 libatk1.0-0
 libatk-bridge2.0-0
 libcups2
 libgtk-3-0
 libgbm-dev
-
-# Para OpenCV (processamento de imagem)
 libgl1-mesa-glx
